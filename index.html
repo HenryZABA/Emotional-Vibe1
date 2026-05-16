@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Reed Field & Boat</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #0e1612;
+        overflow: hidden;
+        height: 100%;
+        width: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+      }
+      #sketch-holder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      canvas {
+        display: block;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+  </head>
+  <body>
+    <div id="sketch-holder"></div>
+    <script src="sketch.js"></script>
+  </body>
+</html>
