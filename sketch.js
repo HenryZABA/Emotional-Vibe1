@@ -335,37 +335,35 @@ function drawGrassLayer(depth) {
       edgeFade = edgeFade * edgeFade * (3 - 2 * edgeFade);  // smoothstep
     }
 
-    // Vertical clip: blades rooted below the clearing within its x range
-    // get their length capped so the tip stops at the rim.
     let effLen = g.len;
-    if (dxc > -1 && dxc < 1) {
-      const yOff = ELL_H * sqrt(1 - dxc * dxc);
-      const yLowRim = by + yOff;
-      if (y0 > yLowRim) {
-        effLen = min(g.len, y0 - yLowRim - 1);
-      }
-    }
-    if (effLen < 3) continue;
 
-    // Tangent direction: rotate "blade → boat" vector by -90° (clockwise
-    // tangent). Density makes the swirl read as a vortex even though
-    // each individual blade is straight-tangent + small wind sway.
-    const dxC = bx - x0;
-    const dyC = by - y0;
-    const dC  = sqrt(dxC * dxC + dyC * dyC) || 0.001;
-    let dirX = -dyC / dC;
-    let dirY =  dxC / dC;
-
-    // Per-blade jitter + small wind sway, both as a rotation on dir.
+    // Uniform direction: every blade grows toward the upper-right.
+    // Small per-blade jitter (g.swirlJitter, ±0.10 rad) + a wind sway
+    // angle keep it from being mechanical.
     let swayMax;
     if (depth === 0)      swayMax = 0.06;
     else if (depth === 1) swayMax = 0.11;
     else                  swayMax = 0.16;
-    const sway = g.swirlJitter + windSway(x0, y0, g.phase) * swayMax;
-    const cs = cos(sway), sn = sin(sway);
-    const dX2 = dirX * cs - dirY * sn;
-    const dY2 = dirX * sn + dirY * cs;
-    dirX = dX2; dirY = dY2;
+    const baseAngle = PI * 0.22 + g.swirlJitter
+                    + windSway(x0, y0, g.phase) * swayMax;
+    let dirX = sin(baseAngle);
+    let dirY = -cos(baseAngle);
+
+    // Ray-vs-ellipse intersection: clip length so the tip stops at the
+    // clearing rim instead of poking into it.
+    const aQ = (dirX * dirX) / (ELL_W * ELL_W) + (dirY * dirY) / (ELL_H * ELL_H);
+    const bQ = 2 * ((x0 - bx) * dirX / (ELL_W * ELL_W) +
+                    (y0 - by) * dirY / (ELL_H * ELL_H));
+    const cQ = dxc * dxc + dyc * dyc - 1;
+    const disc = bQ * bQ - 4 * aQ * cQ;
+    if (disc > 0) {
+      const sqrtD = sqrt(disc);
+      const t1 = (-bQ - sqrtD) / (2 * aQ);
+      if (t1 > 0 && t1 < effLen) {
+        effLen = max(t1 - 1, 0);
+      }
+    }
+    if (effLen < 3) continue;
 
     // Length & width fade near the clearing rim.
     const len = effLen * (0.55 + 0.45 * edgeFade);
