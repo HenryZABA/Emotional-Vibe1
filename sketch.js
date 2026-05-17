@@ -42,9 +42,9 @@ const FAR_COUNT  = 2800;
 const MID_COUNT  = 3600;
 const NEAR_COUNT = 1100;
 
-// Clearing semi-axes — wider than tall, eye-like.
-const ELL_W = 125;   // → 250 wide
-const ELL_H = 42;    // → 84 tall
+// Clearing semi-axes — narrower opening, just wider than the boat.
+const ELL_W = 62;    // → 124 wide
+const ELL_H = 21;    // → 42 tall
 
 function setup() {
   const targetRatio = BASE_W / BASE_H;
@@ -304,35 +304,42 @@ function drawReed(g, effLen, edgeFade) {
   const x0 = g.x;
   const y0 = g.y;
 
-  // Wind/wave field — scalar that controls horizontal bend of the tip.
-  // noise gives spatially correlated gusts; sin makes them travel from
-  // lower-left to upper-right so neighbouring reeds bend together as a
-  // wave passes through.
-  const wind = (noise(x0 * 0.005, y0 * 0.005, t * 0.55) - 0.5);
-  const wave = sin(x0 * 0.014 - y0 * 0.009 + t * 1.7 + g.phase);
-  const bendSignal = constrain(wind * 1.2 + wave * 0.5, -1, 1);
+  // Wind/wave field. Two travelling sine waves at different scales plus a
+  // slow noise gust together give a more "physical" rhythm than a pure
+  // sine — strong pushes, brief lulls, occasional cross-currents.
+  const gust   = (noise(x0 * 0.0035, y0 * 0.0035, t * 0.40) - 0.5) * 2;
+  const wave1  = sin(x0 * 0.013 - y0 * 0.009 + t * 1.8 + g.phase);
+  const wave2  = sin(x0 * 0.026 - y0 * 0.018 + t * 2.7 + g.phase * 1.7) * 0.4;
+  const breath = sin(t * 0.45) * 0.25;   // slow whole-field swell
+  const bendSignal = constrain(gust * 0.55 + wave1 * 0.7 + wave2 + breath, -1.2, 1.2);
 
+  // Tip can swing a long way — proportional to reed length so longer
+  // (foreground) reeds whip further than short far reeds.
   let maxBend;
-  if (g.depth === 0)      maxBend = 6;
-  else if (g.depth === 1) maxBend = 16;
-  else                    maxBend = 28;
+  if (g.depth === 0)      maxBend = 12;
+  else if (g.depth === 1) maxBend = 30;
+  else                    maxBend = 55;
 
   const len = effLen * (0.5 + 0.5 * edgeFade);
   const w   = g.width * (0.60 + 0.40 * edgeFade);
 
-  // Horizontal displacement of the tip from the root.
-  const tipDx = bendSignal * maxBend + g.baseLean * 4;
-  // A strong bend drops the tip a touch (foreshortening as the blade lays
-  // over).
-  const droopY = abs(bendSignal) * len * 0.05;
+  // Near the clearing rim, dampen the bend so reeds don't whip across the
+  // boat as the gust pushes hardest.
+  const bendScale = 0.45 + 0.55 * edgeFade;
+  const tipDx = bendSignal * maxBend * bendScale + g.baseLean * 4;
+  // Foreshortening: when the blade lays over, the tip drops more
+  // (squared on the signal so small motions stay nearly upright).
+  const droopY = bendSignal * bendSignal * len * 0.12;
 
   const tipX = x0 + tipDx;
   const tipY = y0 - len + droopY;
 
   // Control point: middle-upper section. Lower half stays close to
-  // vertical, upper half is where the bending shows.
+  // vertical, upper half is where the bending shows. When the blade
+  // lays over hard, drop the control with the tip so the whole arc
+  // bends as one continuous curve.
   const ctrlX = x0 + tipDx * 0.35;
-  const ctrlY = y0 - len * 0.55;
+  const ctrlY = y0 - len * 0.55 + droopY * 0.45;
 
   const baseA = alpha(g.color) * edgeFade;
   if (baseA < 3) return;
