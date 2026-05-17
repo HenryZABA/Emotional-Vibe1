@@ -42,16 +42,19 @@ const FIG_DARK   = "#3F2316";
 let grasses = [];
 let bgLayer;
 let fogLayer;
+let bgStops;            // shared between buildBackground & sampleBgColor
 let boat = { x: 0, y: 0, vx: 0 };
 let t = 0;
 let scaleFactor = 1;
 let seed;
 
 // Per-layer reed counts.
-const FAR_COUNT  = 7500;
-const MID_COUNT  = 10500;
-const NEAR_COUNT = 2800;
-// Total ≈ 20,800.
+const FAR_COUNT   = 7500;
+const MID_COUNT   = 10500;
+const NEAR_COUNT  = 2800;
+// Background-tinted "ghost" blades that fade the top edge of the field.
+const GHOST_COUNT = 6500;
+// Total ≈ 27,300.
 
 // Coarse noise grid for the gust component (sampled once per frame).
 const NF_COLS = 48;
@@ -77,6 +80,15 @@ function setup() {
   seed = floor(random(99999));
   randomSeed(seed);
   noiseSeed(seed);
+
+  bgStops = [
+    { p: 0.00, c: color(SKY_TOP) },
+    { p: 0.18, c: color(SKY_MIST) },
+    { p: 0.45, c: color(SKY_TEAL) },
+    { p: 0.65, c: color(MID_GREEN) },
+    { p: 0.85, c: color(DEEP_GREEN) },
+    { p: 1.00, c: color(SHADE_GRN) },
+  ];
 
   buildBackground();
   buildFog();
@@ -107,21 +119,13 @@ function buildBackground() {
   bgLayer = createGraphics(BASE_W, BASE_H);
   bgLayer.noStroke();
 
-  const stops = [
-    { p: 0.00, c: color(SKY_TOP) },
-    { p: 0.18, c: color(SKY_MIST) },
-    { p: 0.45, c: color(SKY_TEAL) },     // pale teal at the boat band
-    { p: 0.65, c: color(MID_GREEN) },
-    { p: 0.85, c: color(DEEP_GREEN) },
-    { p: 1.00, c: color(SHADE_GRN) },
-  ];
   for (let y = 0; y < BASE_H; y++) {
     const p = y / (BASE_H - 1);
-    let c1 = stops[0].c, c2 = stops[1].c, p1 = 0, p2 = 1;
-    for (let i = 0; i < stops.length - 1; i++) {
-      if (p >= stops[i].p && p <= stops[i + 1].p) {
-        c1 = stops[i].c; c2 = stops[i + 1].c;
-        p1 = stops[i].p; p2 = stops[i + 1].p;
+    let c1 = bgStops[0].c, c2 = bgStops[1].c, p1 = 0, p2 = 1;
+    for (let i = 0; i < bgStops.length - 1; i++) {
+      if (p >= bgStops[i].p && p <= bgStops[i + 1].p) {
+        c1 = bgStops[i].c; c2 = bgStops[i + 1].c;
+        p1 = bgStops[i].p; p2 = bgStops[i + 1].p;
         break;
       }
     }
@@ -156,30 +160,56 @@ function buildFog() {
   }
 }
 
+// Sample the background gradient at vertical position y. Used to colour
+// the "ghost" reeds the same shade as the bg at their location so they
+// blend in — only their fine line texture is visible, which softens the
+// edge where the grass field meets the haze.
+function sampleBgColor(y) {
+  const p = constrain(y / BASE_H, 0, 1);
+  for (let i = 0; i < bgStops.length - 1; i++) {
+    if (p >= bgStops[i].p && p <= bgStops[i + 1].p) {
+      const local = (p - bgStops[i].p) / (bgStops[i + 1].p - bgStops[i].p);
+      return lerpColor(bgStops[i].c, bgStops[i + 1].c, local);
+    }
+  }
+  return bgStops[bgStops.length - 1].c;
+}
+
 // ---------- Reeds ----------
 function buildGrasses() {
   grasses = [];
 
+  // Ghost reeds — bg-tinted blades biased toward the top so the field
+  // fades into the haze instead of starting with a hard edge.
+  for (let i = 0; i < GHOST_COUNT; i++) {
+    // pow < 1 biases toward smaller fractions → density highest near
+    // the top of the grass band.
+    const yFrac = pow(random(), 1.8);
+    const y = BASE_H * 0.08 + BASE_H * 0.55 * yFrac;
+    const x = random(-20, BASE_W + 20);
+    grasses.push(makeGrass(x, y, 0, true));
+  }
+
   for (let i = 0; i < FAR_COUNT; i++) {
     const x = random(-20, BASE_W + 20);
     const y = random(BASE_H * 0.20, BASE_H * 0.62);
-    grasses.push(makeGrass(x, y, 0));
+    grasses.push(makeGrass(x, y, 0, false));
   }
   for (let i = 0; i < MID_COUNT; i++) {
     const x = random(-30, BASE_W + 30);
     const y = random(BASE_H * 0.32, BASE_H * 0.96);
-    grasses.push(makeGrass(x, y, 1));
+    grasses.push(makeGrass(x, y, 1, false));
   }
   for (let i = 0; i < NEAR_COUNT; i++) {
     const x = random(-40, BASE_W + 40);
     const y = random(BASE_H * 0.78, BASE_H + 30);
-    grasses.push(makeGrass(x, y, 2));
+    grasses.push(makeGrass(x, y, 2, false));
   }
 
   grasses.sort((a, b) => (a.depth - b.depth) || (a.y - b.y));
 }
 
-function makeGrass(x, y, depth) {
+function makeGrass(x, y, depth, bgTint) {
   let lenMin, lenMax, wMin, wMax, alphaVal;
   const yNorm = constrain(map(y, BASE_H * 0.2, BASE_H, 0, 1), 0, 1);
 
@@ -201,45 +231,57 @@ function makeGrass(x, y, depth) {
 
   const len = lerp(lenMin, lenMax, pow(yNorm, 0.55) * random(0.8, 1.05));
 
-  // Palette pick — bottom biased dark, upper biased light/cool.
-  let palette;
-  const r = random();
-  if (y > BASE_H * 0.70 || depth === 2) {
-    if (r < 0.55)      palette = GRASS_DARK;
-    else if (r < 0.90) palette = GRASS_MID;
-    else if (r < 0.98) palette = GRASS_COOL;
-    else               palette = GRASS_LITE;
-  } else if (depth === 0) {
-    if (r < 0.50)      palette = GRASS_LITE;
-    else if (r < 0.80) palette = GRASS_COOL;
-    else               palette = GRASS_MID;
+  let baseR, baseG, baseB;
+  if (bgTint) {
+    // Ghost blade — colour matches the bg gradient at this y. Tiny
+    // tint jitter so the texture has slight variation rather than
+    // identical strokes.
+    const bgC = sampleBgColor(y);
+    baseR = constrain(red(bgC)   + random(-6, 6), 0, 255);
+    baseG = constrain(green(bgC) + random(-6, 6), 0, 255);
+    baseB = constrain(blue(bgC)  + random(-6, 6), 0, 255);
+    // Ghost reeds visible mainly through their fine line texture —
+    // moderate alpha so the strokes register but stay subtle.
+    alphaVal = random(60, 130);
   } else {
-    if (r < 0.55)      palette = GRASS_MID;
-    else if (r < 0.78) palette = GRASS_DARK;
-    else if (r < 0.93) palette = GRASS_MID;
-    else if (r < 0.99) palette = GRASS_COOL;
-    else               palette = GRASS_LITE;
+    // Palette pick — bottom biased dark, upper biased light/cool.
+    let palette;
+    const r = random();
+    if (y > BASE_H * 0.70 || depth === 2) {
+      if (r < 0.55)      palette = GRASS_DARK;
+      else if (r < 0.90) palette = GRASS_MID;
+      else if (r < 0.98) palette = GRASS_COOL;
+      else               palette = GRASS_LITE;
+    } else if (depth === 0) {
+      if (r < 0.50)      palette = GRASS_LITE;
+      else if (r < 0.80) palette = GRASS_COOL;
+      else               palette = GRASS_MID;
+    } else {
+      if (r < 0.55)      palette = GRASS_MID;
+      else if (r < 0.78) palette = GRASS_DARK;
+      else if (r < 0.93) palette = GRASS_MID;
+      else if (r < 0.99) palette = GRASS_COOL;
+      else               palette = GRASS_LITE;
+    }
+    const c = color(palette[floor(random(palette.length))]);
+    baseR = red(c);
+    baseG = green(c);
+    baseB = blue(c);
   }
-  const c = color(palette[floor(random(palette.length))]);
 
   return {
     x, y,
     depth,
     len,
     width: random(wMin, wMax),
-    // Raw rgb for fast stroke() calls.
-    baseR: red(c),
-    baseG: green(c),
-    baseB: blue(c),
+    baseR, baseG, baseB,
     alpha: alphaVal,
-    // Per-blade swirl jitter so the swirl isn't mechanical, plus a
-    // bend-curl direction for the comma-shaped quadratic.
     swirlJitter: random(-0.10, 0.10),
     bendCurl: random(0.12, 0.22),
     flip: random() < 0.5 ? -1 : 1,
     phase: random(TWO_PI),
-    // ~12% of blades get a pale tip highlight stroke (static, baked).
-    hasTipHighlight: random() < 0.12,
+    // Cream tip highlights only on real blades, not ghosts.
+    hasTipHighlight: !bgTint && random() < 0.12,
   };
 }
 
@@ -433,8 +475,8 @@ function drawBoat(bx, by) {
   translate(bx, by);
   rotate(sin(t * 0.6) * 0.02);
 
-  const bw = 17;
-  const bh = 2.6;
+  const bw = 34;     // 2x size
+  const bh = 5.2;
 
   // Hull.
   noStroke();
@@ -448,15 +490,15 @@ function drawBoat(bx, by) {
   endShape(CLOSE);
 
   stroke(BOAT_DARK);
-  strokeWeight(0.7);
+  strokeWeight(1.4);
   noFill();
   beginShape();
-  vertex(-bw * 0.82, 0.2);
-  quadraticVertex(0, bh * 0.95, bw * 0.82, 0.2);
+  vertex(-bw * 0.82, 0.4);
+  quadraticVertex(0, bh * 0.95, bw * 0.82, 0.4);
   endShape();
 
   stroke(BOAT_LITE);
-  strokeWeight(0.35);
+  strokeWeight(0.7);
   beginShape();
   vertex(-bw * 0.78, -bh * 0.15);
   quadraticVertex(0, -bh * 0.4, bw * 0.78, -bh * 0.15);
@@ -464,9 +506,9 @@ function drawBoat(bx, by) {
 
   noStroke();
   fill(FIG_DARK);
-  ellipse(-1.2, -bh * 0.9, 2.0, 3.4);
+  ellipse(-2.4, -bh * 0.9, 4.0, 6.8);
   fill(FIG_WARM);
-  ellipse(-1.2, -bh * 1.25, 1.5, 1.5);
+  ellipse(-2.4, -bh * 1.25, 3.0, 3.0);
 
   pop();
 }
