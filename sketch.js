@@ -1,8 +1,8 @@
 /*
   Reed field & a small boat.
-  All visuals generated with p5.js. The field is a vortex of curved,
-  hair-fine reeds; reeds in the centre band sweep around a soft elliptical
-  patch of water, where a tiny boat drifts left to right.
+  Top-down grass ocean: thousands of short, curved strokes flow
+  horizontally with a clockwise swirl around a soft eye-shaped pool of
+  water, where a tiny boat drifts left to right.
 */
 
 // ---------- Canvas ----------
@@ -22,9 +22,9 @@ const GRASS_MID  = ["#4F9A68", "#68B17D", "#7FC493", "#91CFA3"];
 const GRASS_LITE = ["#B9E0C4", "#D5EED8", "#E6F4E5", "#F2F7EC"];
 const GRASS_COOL = ["#8ECDB2", "#A9DCC4", "#C8E8D8"];
 
-const WATER_IN   = "#E8F3E6";
-const WATER_OUT  = "#BFDCC7";
-const RIPPLE_COL = "#315F50";
+const WATER_IN   = "#E3F0E2";
+const WATER_MID  = "#CDE5D3";
+const WATER_OUT  = "#A9D2B7";
 
 const BOAT_MAIN  = "#102B25";
 const BOAT_DARK  = "#081915";
@@ -42,13 +42,13 @@ let scaleFactor = 1;
 let seed;
 
 // Reed counts per depth.
-const FAR_COUNT  = 2400;
-const MID_COUNT  = 3200;
+const FAR_COUNT  = 2800;
+const MID_COUNT  = 3600;
 const NEAR_COUNT = 1100;
 
-// Clearing ellipse semi-axes.
-const ELL_W = 100;   // → 200px wide
-const ELL_H = 40;    // → 80px tall
+// Clearing semi-axes — wider than tall, eye-like.
+const ELL_W = 125;   // → 250 wide
+const ELL_H = 42;    // → 84 tall
 
 function setup() {
   const targetRatio = BASE_W / BASE_H;
@@ -72,7 +72,7 @@ function setup() {
 
   boat.x = -60;
   boat.y = BASE_H * 0.56;
-  boat.vx = BASE_W / (60 * 45);
+  boat.vx = BASE_W / (60 * 48);
 
   frameRate(60);
 }
@@ -97,8 +97,8 @@ function buildBackground() {
   const stops = [
     { p: 0.00, c: color(SKY_TOP) },
     { p: 0.20, c: color(SKY_MIST) },
-    { p: 0.40, c: color(SKY_TEAL) },
-    { p: 0.65, c: color(MID_GREEN) },
+    { p: 0.42, c: color(SKY_TEAL) },
+    { p: 0.66, c: color(MID_GREEN) },
     { p: 0.88, c: color(DEEP_GREEN) },
     { p: 1.00, c: color(SHADE_GRN) },
   ];
@@ -119,14 +119,14 @@ function buildBackground() {
 
   // Paper grain.
   bgLayer.noStroke();
-  for (let i = 0; i < 2200; i++) {
-    bgLayer.fill(random() < 0.5 ? 255 : 0, random(3, 10));
+  for (let i = 0; i < 2400; i++) {
+    bgLayer.fill(random() < 0.5 ? 255 : 0, random(3, 9));
     bgLayer.rect(random(BASE_W), random(BASE_H), 1, 1);
   }
-  // Soft horizontal washes.
-  for (let i = 0; i < 10; i++) {
-    bgLayer.fill(255, random(4, 9));
-    bgLayer.rect(0, random(BASE_H * 0.25, BASE_H), BASE_W, random(50, 180));
+  // Horizontal washes for atmosphere.
+  for (let i = 0; i < 12; i++) {
+    bgLayer.fill(255, random(3, 8));
+    bgLayer.rect(0, random(BASE_H * 0.25, BASE_H), BASE_W, random(40, 160));
   }
 }
 
@@ -134,12 +134,12 @@ function buildFog() {
   fogLayer = createGraphics(BASE_W, BASE_H);
   fogLayer.noStroke();
   for (let y = 0; y < BASE_H * 0.55; y++) {
-    const a = map(y, 0, BASE_H * 0.55, 120, 0);
+    const a = map(y, 0, BASE_H * 0.55, 130, 0);
     fogLayer.stroke(255, 255, 255, a);
     fogLayer.line(0, y, BASE_W, y);
   }
-  for (let i = 0; i < 600; i++) {
-    fogLayer.fill(255, random(2, 7));
+  for (let i = 0; i < 700; i++) {
+    fogLayer.fill(255, random(2, 6));
     fogLayer.ellipse(random(BASE_W), random(BASE_H * 0.6),
                      random(20, 80), random(20, 80));
   }
@@ -149,22 +149,23 @@ function buildFog() {
 function buildGrasses() {
   grasses = [];
 
-  // Far layer — short, fine, lighter, upper band.
+  // Far — thin, fine, covering everything from upper fog band to mid.
+  // Upper part of this band ends up extremely faint; lower part is more visible.
   for (let i = 0; i < FAR_COUNT; i++) {
     const x = random(-20, BASE_W + 20);
-    const y = random(BASE_H * 0.15, BASE_H * 0.60);
+    const y = random(BASE_H * 0.20, BASE_H * 0.62);
     grasses.push(makeGrass(x, y, 0));
   }
-  // Mid layer — broad band, the densest.
+  // Mid — densest mass, fills the body of the field.
   for (let i = 0; i < MID_COUNT; i++) {
     const x = random(-30, BASE_W + 30);
-    const y = random(BASE_H * 0.30, BASE_H * 0.95);
+    const y = random(BASE_H * 0.32, BASE_H * 0.96);
     grasses.push(makeGrass(x, y, 1));
   }
-  // Near layer — bottom band, longer and darker.
+  // Near — confined to the bottom band only.
   for (let i = 0; i < NEAR_COUNT; i++) {
     const x = random(-40, BASE_W + 40);
-    const y = random(BASE_H * 0.62, BASE_H + 40);
+    const y = random(BASE_H * 0.78, BASE_H + 30);
     grasses.push(makeGrass(x, y, 2));
   }
 
@@ -172,36 +173,50 @@ function buildGrasses() {
 }
 
 function makeGrass(x, y, depth) {
-  let lenMin, lenMax, wMin, wMax, alpha;
+  let lenMin, lenMax, wMin, wMax, alphaVal;
+  const yNorm = constrain(map(y, BASE_H * 0.2, BASE_H, 0, 1), 0, 1);
+
   if (depth === 0) {
-    lenMin = 18;  lenMax = 42;
-    wMin = 0.25;  wMax = 0.45;
-    alpha = random(50, 110);
+    lenMin = 12;  lenMax = 32;
+    wMin = 0.22;  wMax = 0.42;
+    // Top of band is barely visible; lower edge of far layer is more apparent.
+    const yFactor = constrain(
+      map(y, BASE_H * 0.20, BASE_H * 0.60, 0, 1), 0, 1);
+    alphaVal = lerp(random(8, 22), random(40, 90), yFactor);
   } else if (depth === 1) {
-    lenMin = 35;  lenMax = 78;
-    wMin = 0.35;  wMax = 0.65;
-    alpha = random(100, 180);
+    lenMin = 25;  lenMax = 65;
+    wMin = 0.32;  wMax = 0.62;
+    alphaVal = random(55, 135);
   } else {
-    lenMin = 65;  lenMax = 130;
-    wMin = 0.50;  wMax = 0.90;
-    alpha = random(160, 225);
+    lenMin = 55;  lenMax = 105;
+    wMin = 0.45;  wMax = 0.85;
+    alphaVal = random(130, 200);
   }
 
-  const yNorm = constrain(map(y, BASE_H * 0.2, BASE_H, 0, 1), 0, 1);
   const len = lerp(lenMin, lenMax, pow(yNorm, 0.55) * random(0.8, 1.05));
 
-  // Palette: mostly mid; some dark on near; light sprinkle on far.
-  const r = random();
+  // Palette: bottom half biased to dark/mid; upper biased to lighter/cool.
   let palette;
-  if (r < 0.55)      palette = GRASS_MID;
-  else if (r < 0.78) palette = depth === 2 ? GRASS_DARK : GRASS_MID;
-  else if (r < 0.90) palette = GRASS_DARK;
-  else if (r < 0.97) palette = GRASS_LITE;
-  else               palette = GRASS_COOL;
-  if (depth === 0 && random() < 0.45) palette = GRASS_LITE;
+  const r = random();
+  if (y > BASE_H * 0.70 || depth === 2) {
+    if (r < 0.55)      palette = GRASS_DARK;
+    else if (r < 0.90) palette = GRASS_MID;
+    else if (r < 0.98) palette = GRASS_COOL;
+    else               palette = GRASS_LITE;
+  } else if (depth === 0) {
+    if (r < 0.50)      palette = GRASS_LITE;
+    else if (r < 0.80) palette = GRASS_COOL;
+    else               palette = GRASS_MID;
+  } else {
+    if (r < 0.55)      palette = GRASS_MID;
+    else if (r < 0.78) palette = GRASS_DARK;
+    else if (r < 0.93) palette = GRASS_MID;
+    else if (r < 0.99) palette = GRASS_COOL;
+    else               palette = GRASS_LITE;
+  }
 
   const col = color(palette[floor(random(palette.length))]);
-  col.setAlpha(alpha);
+  col.setAlpha(alphaVal);
 
   return {
     x, y,
@@ -209,13 +224,13 @@ function makeGrass(x, y, depth) {
     len,
     width: random(wMin, wMax),
     color: col,
-    // How much the tip drops toward the perpendicular (the "comma" curl).
-    bend: random(0.18, 0.34),
+    bend: random(0.18, 0.32),
     flip: random() < 0.5 ? -1 : 1,
-    // Small per-reed swirl jitter so the field isn't perfectly tangent.
-    swirlJitter: random(-0.14, 0.14),
+    swirlJitter: random(-0.12, 0.12),
     phase: random(TWO_PI),
-    stiffness: random(0.6, 1.0),
+    // Small per-reed natural angle variation so the horizontal flow isn't
+    // uniform — adds organic noise to the bulk direction.
+    angJitter: random(-0.18, 0.18),
   };
 }
 
@@ -231,12 +246,12 @@ function draw() {
   scale(scaleFactor);
 
   image(bgLayer, 0, 0);
-  drawGrassLayer(0);     // far
-  image(fogLayer, 0, 0); // top fog
-  drawGrassLayer(1);     // mid
-  drawClearing(boat.x, boat.y);
-  drawBoat(boat.x, boat.y);
-  drawGrassLayer(2);     // near, on top
+  drawClearing(boat.x, boat.y);      // subtle water wash, NOT a glow
+  drawGrassLayer(0);                  // far
+  image(fogLayer, 0, 0);              // top fog
+  drawGrassLayer(1);                  // mid
+  drawBoat(boat.x, boat.y);           // boat in centre of pool
+  drawGrassLayer(2);                  // near, on top
   drawHaze();
 
   pop();
@@ -248,11 +263,6 @@ function drawGrassLayer(depth) {
   const bx = boat.x;
   const by = boat.y;
 
-  // Exclusion radii in ellipse-distance units.
-  // Near layer keeps a wider exclusion so it cannot overlap the boat.
-  const inner = depth === 2 ? 1.20 : 0.92;
-  const outer = depth === 2 ? 1.75 : 1.45;
-
   for (let g of grasses) {
     if (g.depth !== depth) continue;
 
@@ -260,12 +270,21 @@ function drawGrassLayer(depth) {
     const dy = (g.y - by) / ELL_H;
     const ed = sqrt(dx * dx + dy * dy);
 
+    // Per-reed angular noise on the boundary so the rim is irregular.
+    const ang = atan2(dy, dx);
+    const rimN = (noise(cos(ang) * 1.6 + 7.1,
+                        sin(ang) * 1.6 + 13.4) - 0.5) * 0.20;
+
+    // Near layer keeps a wider exclusion so foreground reeds can't smother
+    // the boat or the pool.
+    const inner = (depth === 2 ? 1.25 : 0.95) + rimN;
+    const outer = inner + (depth === 2 ? 0.55 : 0.45);
+
     if (ed < inner) continue;
     let edgeFade = 1;
     if (ed < outer) {
       edgeFade = map(ed, inner, outer, 0, 1);
-      // smoothstep
-      edgeFade = edgeFade * edgeFade * (3 - 2 * edgeFade);
+      edgeFade = edgeFade * edgeFade * (3 - 2 * edgeFade);  // smoothstep
     }
 
     drawReed(g, bx, by, ed, edgeFade);
@@ -276,56 +295,64 @@ function drawReed(g, bx, by, ed, edgeFade) {
   const x0 = g.x;
   const y0 = g.y;
 
-  // Vector from reed root to boat (vortex center).
+  // Vector toward boat (vortex centre).
   const rdx = bx - x0;
   const rdy = by - y0;
   const rd  = sqrt(rdx * rdx + rdy * rdy) || 0.001;
   const cux = rdx / rd;
   const cuy = rdy / rd;
 
-  // Tangent to the circle around the boat (rotate "toward center" by -90°).
-  // This makes the field run clockwise around the clearing.
-  const tx = -cuy;
-  const ty =  cux;
+  // Clockwise tangent with vertical component dampened so the swirl stays
+  // horizontal-leaning even directly above or below the boat.
+  const Y_DAMP = 0.35;
+  let tx = -cuy;
+  let ty =  cux * Y_DAMP;
+  const tn = sqrt(tx * tx + ty * ty) || 1;
+  tx /= tn; ty /= tn;
 
-  // Apply a small per-reed jitter so the swirl isn't mechanically perfect.
-  const sj = g.swirlJitter;
-  const csj = cos(sj), snj = sin(sj);
-  let dirX = tx * csj - ty * snj;
-  let dirY = tx * snj + ty * csj;
+  // Natural direction: roughly horizontal toward the right, with a small
+  // tilt that lifts reeds above the boat and drops reeds below — creating
+  // a soft sense of flow around the pool even far from it.
+  const yRel = (y0 - by) / 220;
+  const naturalAng = constrain(yRel * 0.22, -0.30, 0.30) + g.angJitter * 0.35;
+  const naX = cos(naturalAng);
+  const naY = sin(naturalAng);
 
-  // Wind & wave perturbation. The wave travels diagonally so the gust
-  // moves from lower-left to upper-right across the field.
+  // Blend tangent (near boat) → natural (far away).
+  const swirlMix = constrain(exp(-(ed - 1.0) * 0.55), 0, 1);
+
+  let dirX = lerp(naX, tx, swirlMix);
+  let dirY = lerp(naY, ty, swirlMix);
+  const dLen = sqrt(dirX * dirX + dirY * dirY) || 1;
+  dirX /= dLen;
+  dirY /= dLen;
+
+  // Wind & wave — gust travels from lower-left to upper-right.
   const wind = (noise(x0 * 0.0045, y0 * 0.0045, t * 0.55) - 0.5);
   const wave = sin(x0 * 0.015 - y0 * 0.010 + t * 1.7 + g.phase);
 
   let swayMax;
-  if (g.depth === 0)      swayMax = 0.08;
-  else if (g.depth === 1) swayMax = 0.15;
-  else                    swayMax = 0.22;
-  const sway = wind * 0.4 + wave * swayMax;
+  if (g.depth === 0)      swayMax = 0.06;
+  else if (g.depth === 1) swayMax = 0.12;
+  else                    swayMax = 0.19;
+  const sway = wind * 0.32 + wave * swayMax;
 
   const cs = cos(sway), sn = sin(sway);
   const fX = dirX * cs - dirY * sn;
   const fY = dirX * sn + dirY * cs;
 
-  // Length & width respond to the clearing edge.
   const len = g.len * (0.45 + 0.55 * edgeFade);
-  const w   = g.width * (0.55 + 0.45 * edgeFade);
+  const w   = g.width * (0.60 + 0.40 * edgeFade);
 
-  // Perpendicular for the bend offset.
+  // Perpendicular for the comma-shaped bend.
   const pX = -fY;
   const pY =  fX;
 
-  // Tip droops away from base direction. Wave modulates the bend so reeds
-  // breathe rather than being statically curved.
   const bendStrength = g.bend * (0.85 + 0.30 * wave);
   const bendAmt = bendStrength * len * g.flip;
 
-  // Control point sits ~55% along the direction, displaced perpendicular.
   const cX = x0 + fX * len * 0.55 + pX * bendAmt * 0.55;
   const cY = y0 + fY * len * 0.55 + pY * bendAmt * 0.55;
-  // Tip drops a little farther toward the perpendicular for a comma shape.
   const tX = x0 + fX * len * 0.92 + pX * bendAmt * 1.10;
   const tY = y0 + fY * len * 0.92 + pY * bendAmt * 1.10;
 
@@ -333,7 +360,6 @@ function drawReed(g, bx, by, ed, edgeFade) {
   if (baseA < 3) return;
   const rC = red(g.color), gC = green(g.color), bC = blue(g.color);
 
-  // Main body — root to tip, full thickness.
   noFill();
   stroke(color(rC, gC, bC, baseA));
   strokeWeight(w);
@@ -342,13 +368,12 @@ function drawReed(g, bx, by, ed, edgeFade) {
   quadraticVertex(cX, cY, tX, tY);
   endShape();
 
-  // Tip taper — finer stroke over the upper half, simulating the leaf
-  // thinning toward its tip. Only worth it when the reed is thick enough.
-  if (w > 0.42) {
+  // Tip taper for the thicker reeds — finer overlay covering the upper half.
+  if (w > 0.50) {
     const sX = lerp(x0, cX, 0.55);
     const sY = lerp(y0, cY, 0.55);
-    stroke(color(rC, gC, bC, baseA * 0.85));
-    strokeWeight(w * 0.50);
+    stroke(color(rC, gC, bC, baseA * 0.80));
+    strokeWeight(w * 0.45);
     beginShape();
     vertex(sX, sY);
     quadraticVertex(
@@ -360,77 +385,70 @@ function drawReed(g, bx, by, ed, edgeFade) {
   }
 }
 
-// ---------- Water clearing ----------
+// ---------- Clearing (subtle pool, NOT a glow) ----------
+// Drawn under the grass layers; the visible "opening" is shaped by reeds
+// thinning and bending out of it, not by an opaque oval.
 function drawClearing(bx, by) {
   push();
   noStroke();
 
-  // Feathered halo — many concentric translucent ellipses for a soft edge.
-  for (let i = 26; i >= 0; i--) {
-    const k = i / 26;
-    const w = lerp(ELL_W * 2.4, ELL_W * 1.05, 1 - k);
-    const h = lerp(ELL_H * 2.4, ELL_H * 1.05, 1 - k);
-    const c = lerpColor(color(WATER_OUT), color(WATER_IN), 1 - k);
-    c.setAlpha(lerp(2, 26, 1 - k));
-    fill(c);
-    ellipse(bx, by + 2, w, h);
-  }
+  // Three soft eye-shaped washes that blend with the background.
+  // Outer halo — barely visible.
+  let c = color(WATER_OUT);
+  c.setAlpha(20);
+  fill(c);
+  drawEye(bx, by, ELL_W * 1.85, ELL_H * 1.95);
 
-  // Inner pale water.
-  const inner = color(WATER_IN);
-  inner.setAlpha(110);
-  fill(inner);
-  ellipse(bx, by + 2, ELL_W * 1.75, ELL_H * 1.55);
+  // Middle.
+  c = lerpColor(color(WATER_OUT), color(WATER_MID), 0.5);
+  c.setAlpha(34);
+  fill(c);
+  drawEye(bx, by, ELL_W * 1.35, ELL_H * 1.35);
 
-  // Soft ripples sliding outward.
-  noFill();
-  for (let i = 0; i < 5; i++) {
-    const phase = (t * 0.5 + i * 0.6) % 2;
-    const rw = ELL_W * (0.5 + phase * 0.45);
-    const rh = ELL_H * (0.35 + phase * 0.3);
-    const rc = color(RIPPLE_COL);
-    rc.setAlpha(map(phase, 0, 1.4, 18, 0));
-    stroke(rc);
-    strokeWeight(0.5);
-    ellipse(bx + sin(t * 0.4 + i) * 1.5, by + 5, rw, rh);
-  }
-
-  // Wake.
-  noStroke();
-  const wake = color(WATER_IN);
-  wake.setAlpha(45);
-  fill(wake);
-  ellipse(bx - ELL_W * 0.75, by + 4, ELL_W * 1.5, ELL_H * 0.55);
+  // Inner — pale water, still soft.
+  c = color(WATER_IN);
+  c.setAlpha(52);
+  fill(c);
+  drawEye(bx, by, ELL_W * 1.00, ELL_H * 1.00);
 
   pop();
+}
+
+// Lens / eye shape — pointier at the horizontal tips than a plain ellipse.
+function drawEye(cx, cy, w, h) {
+  beginShape();
+  vertex(cx - w, cy);
+  bezierVertex(cx - w * 0.55, cy - h, cx + w * 0.55, cy - h, cx + w, cy);
+  bezierVertex(cx + w * 0.55, cy + h, cx - w * 0.55, cy + h, cx - w, cy);
+  endShape(CLOSE);
 }
 
 // ---------- Boat ----------
 function drawBoat(bx, by) {
   push();
   translate(bx, by);
-  rotate(sin(t * 0.6) * 0.025);
+  rotate(sin(t * 0.6) * 0.02);
 
-  const bw = 20;   // half-length → 40px total
-  const bh = 3;    // half-height → 6px total
+  const bw = 18;    // half-length → 36px total
+  const bh = 2.6;   // half-height → ~5px total
 
-  // Reflection.
+  // Very faint reflection — no obvious ripple rings.
   noStroke();
   const refl = color(BOAT_DARK);
-  refl.setAlpha(55);
+  refl.setAlpha(45);
   fill(refl);
   beginShape();
-  vertex(-bw * 0.9, 1);
-  quadraticVertex(0, bh * 2.6, bw * 0.9, 1);
+  vertex(-bw * 0.9, 0.8);
+  quadraticVertex(0, bh * 2.4, bw * 0.9, 0.8);
   endShape(CLOSE);
 
-  // Horizontal water shimmer.
-  const shim = color(WATER_OUT);
-  shim.setAlpha(80);
-  fill(shim);
-  ellipse(0, bh * 1.5, bw * 1.8, 3);
+  // A single faint shimmer line under the hull.
+  stroke(255, 60);
+  strokeWeight(0.4);
+  line(-bw * 1.1, bh * 1.6, bw * 1.1, bh * 1.6);
 
   // Hull.
+  noStroke();
   fill(BOAT_MAIN);
   beginShape();
   vertex(-bw, 0);
@@ -442,7 +460,7 @@ function drawBoat(bx, by) {
 
   // Inner shadow.
   stroke(BOAT_DARK);
-  strokeWeight(0.8);
+  strokeWeight(0.7);
   noFill();
   beginShape();
   vertex(-bw * 0.82, 0.2);
@@ -451,18 +469,18 @@ function drawBoat(bx, by) {
 
   // Gunwale highlight.
   stroke(BOAT_LITE);
-  strokeWeight(0.4);
+  strokeWeight(0.35);
   beginShape();
   vertex(-bw * 0.78, -bh * 0.15);
   quadraticVertex(0, -bh * 0.4, bw * 0.78, -bh * 0.15);
   endShape();
 
-  // Tiny figure — torso + head.
+  // Tiny figure.
   noStroke();
   fill(FIG_DARK);
-  ellipse(-1.5, -bh * 0.9, 2.2, 4);
+  ellipse(-1.2, -bh * 0.9, 2.0, 3.6);
   fill(FIG_WARM);
-  ellipse(-1.5, -bh * 1.25, 1.7, 1.7);
+  ellipse(-1.2, -bh * 1.25, 1.5, 1.5);
 
   pop();
 }
@@ -471,12 +489,10 @@ function drawBoat(bx, by) {
 function drawHaze() {
   push();
   noStroke();
-  // Top warm haze for atmosphere.
   for (let i = 0; i < 5; i++) {
     fill(255, 255, 245, 4);
     rect(0, 0, BASE_W, BASE_H * 0.22);
   }
-  // Bottom darkening.
   for (let y = 0; y < 60; y++) {
     const a = map(y, 0, 60, 0, 18);
     stroke(10, 30, 24, a);
