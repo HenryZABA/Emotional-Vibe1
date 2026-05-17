@@ -1,9 +1,9 @@
 /*
-  Reed field & a small boat, perspective view.
-  Layered far/mid/near reeds rooted vertically with wind-bending tips.
-  All blades sample a coherent wave field so neighbours bend together —
-  bent blades pull their colour toward a pale silver-green, producing
-  visible "wheat wave" bands drifting across the surface.
+  Reed field & a small boat — clockwise vortex of reeds around the boat.
+  Layered far / mid / near blades all run along a tangent direction
+  centred on the boat, with subtle wind sway. No water layer: the boat
+  sits in a small grass-free area and the background gradient shows
+  through as the pale "pool".
 */
 
 // ---------- Canvas ----------
@@ -11,25 +11,25 @@ const BASE_W = 390;
 const BASE_H = 844;
 
 // ---------- Palette ----------
-// Atmospheric perspective: hazy at the top, deep field at the bottom.
+// Atmospheric perspective: hazy cream sky → pale teal mid (this is what
+// the boat clearing exposes) → deep emerald bottom.
 const SKY_TOP    = "#F5F7EE";
 const SKY_MIST   = "#DDEBDD";
-const SKY_TEAL   = "#A9D6BA";
-const MID_GREEN  = "#4F9A68";
-const DEEP_GREEN = "#1F5F46";
+const SKY_TEAL   = "#B6D6BD";
+const MID_GREEN  = "#6DA773";
+const DEEP_GREEN = "#2D6448";
 const SHADE_GRN  = "#163F34";
 
-// Reed palette buckets (kept as hex; converted to rgb at build time).
+// Reed palette buckets (hex; converted to rgb at build time).
 const GRASS_DARK = ["#174633", "#1D5B42", "#246B4A", "#2F7A55"];
 const GRASS_MID  = ["#4F9A68", "#68B17D", "#7FC493", "#91CFA3"];
 const GRASS_LITE = ["#B9E0C4", "#D5EED8", "#E6F4E5", "#F2F7EC"];
 const GRASS_COOL = ["#8ECDB2", "#A9DCC4", "#C8E8D8"];
 
-// Colour the blade pulls toward when laid over by the wind — gives the
-// silvery wave-crest sheen.
-const BENT_R = 222;
-const BENT_G = 236;
-const BENT_B = 178;
+// Cream highlight baked into ~12% of blades' tips.
+const TIP_HL_R = 230;
+const TIP_HL_G = 233;
+const TIP_HL_B = 181;
 
 // Boat.
 const BOAT_MAIN  = "#102B25";
@@ -47,11 +47,11 @@ let t = 0;
 let scaleFactor = 1;
 let seed;
 
-// Per-layer reed counts — much denser than the previous version.
-const FAR_COUNT  = 5500;
-const MID_COUNT  = 7000;
-const NEAR_COUNT = 2000;
-// Total ≈ 14,500.
+// Per-layer reed counts.
+const FAR_COUNT  = 7500;
+const MID_COUNT  = 10500;
+const NEAR_COUNT = 2800;
+// Total ≈ 20,800.
 
 // Coarse noise grid for the gust component (sampled once per frame).
 const NF_COLS = 48;
@@ -59,8 +59,8 @@ const NF_ROWS = 100;
 let noiseField;
 
 // Clearing semi-axes.
-const ELL_W = 58;   // → 116 wide
-const ELL_H = 20;   // → 40 tall
+const ELL_W = 100;   // → 200 wide
+const ELL_H = 45;    // → 90 tall
 
 function setup() {
   const targetRatio = BASE_W / BASE_H;
@@ -109,10 +109,10 @@ function buildBackground() {
 
   const stops = [
     { p: 0.00, c: color(SKY_TOP) },
-    { p: 0.20, c: color(SKY_MIST) },
-    { p: 0.42, c: color(SKY_TEAL) },
-    { p: 0.66, c: color(MID_GREEN) },
-    { p: 0.88, c: color(DEEP_GREEN) },
+    { p: 0.18, c: color(SKY_MIST) },
+    { p: 0.45, c: color(SKY_TEAL) },     // pale teal at the boat band
+    { p: 0.65, c: color(MID_GREEN) },
+    { p: 0.85, c: color(DEEP_GREEN) },
     { p: 1.00, c: color(SHADE_GRN) },
   ];
   for (let y = 0; y < BASE_H; y++) {
@@ -227,13 +227,19 @@ function makeGrass(x, y, depth) {
     depth,
     len,
     width: random(wMin, wMax),
-    // Store as raw rgb so the inner loop can lerp toward BENT without
-    // constructing colour objects.
+    // Raw rgb for fast stroke() calls.
     baseR: red(c),
     baseG: green(c),
     baseB: blue(c),
     alpha: alphaVal,
-    baseLean: random(-0.5, 0.5),
+    // Per-blade swirl jitter so the swirl isn't mechanical, plus a
+    // bend-curl direction for the comma-shaped quadratic.
+    swirlJitter: random(-0.10, 0.10),
+    bendCurl: random(0.12, 0.22),
+    flip: random() < 0.5 ? -1 : 1,
+    phase: random(TWO_PI),
+    // ~12% of blades get a pale tip highlight stroke (static, baked).
+    hasTipHighlight: random() < 0.12,
   };
 }
 
@@ -264,17 +270,12 @@ function fieldNoise(x, y) {
          (a01 * (1 - dc) + a11 * dc) * dr;
 }
 
-// Coherent wave field — adjacent reeds see nearly identical values, so
-// gust patches read as visible bands.
-function waveBend(x, y) {
-  const w1 = sin(x * 0.020 + y * 0.012 - t * 0.85);
-  const w2 = sin(x * 0.038 - y * 0.024 + t * 1.30) * 0.45;
-  const n  = fieldNoise(x, y);
-  const breath = sin(t * 0.45) * 0.18;
-  let v = w1 * 0.55 + w2 + n * 1.35 + breath;
-  if (v >  1.2) v =  1.2;
-  if (v < -1.2) v = -1.2;
-  return v;
+// Small wind sway in radians — animates the tangent direction subtly.
+// No bright wave bands; just gentle breath through the field.
+function windSway(x, y, phase) {
+  const wind = fieldNoise(x, y);
+  const wave = sin(x * 0.015 + y * 0.010 + t * 1.5 + phase) * 0.5;
+  return wind * 1.2 + wave;
 }
 
 // ---------- Draw ----------
@@ -346,57 +347,81 @@ function drawGrassLayer(depth) {
     }
     if (effLen < 3) continue;
 
-    // Wave-driven bend.
-    const W = waveBend(x0, y0);
-    const bendMag = W < 0 ? -W : W;
+    // Tangent direction: rotate "blade → boat" vector by -90° (clockwise
+    // tangent). Density makes the swirl read as a vortex even though
+    // each individual blade is straight-tangent + small wind sway.
+    const dxC = bx - x0;
+    const dyC = by - y0;
+    const dC  = sqrt(dxC * dxC + dyC * dyC) || 0.001;
+    let dirX = -dyC / dC;
+    let dirY =  dxC / dC;
 
-    // Tip excursion — proportional to length so longer blades whip
-    // further. Dampened near the clearing rim so reeds don't blow into
-    // the boat at peak gust.
+    // Per-blade jitter + small wind sway, both as a rotation on dir.
+    let swayMax;
+    if (depth === 0)      swayMax = 0.06;
+    else if (depth === 1) swayMax = 0.11;
+    else                  swayMax = 0.16;
+    const sway = g.swirlJitter + windSway(x0, y0, g.phase) * swayMax;
+    const cs = cos(sway), sn = sin(sway);
+    const dX2 = dirX * cs - dirY * sn;
+    const dY2 = dirX * sn + dirY * cs;
+    dirX = dX2; dirY = dY2;
+
+    // Length & width fade near the clearing rim.
     const len = effLen * (0.55 + 0.45 * edgeFade);
     const w   = g.width * (0.6 + 0.4 * edgeFade);
-    const bendScale = 0.5 + 0.5 * edgeFade;
-    const tipDx = W * len * 0.62 * bendScale + g.baseLean * 3;
-    const droopY = bendMag * bendMag * len * 0.20;
 
-    const tipX = x0 + tipDx;
-    const tipY = y0 - len + droopY;
-    const ctrlX = x0 + tipDx * 0.38;
-    const ctrlY = y0 - len * 0.58 + droopY * 0.45;
+    // Tip at (root + dir * len). Comma curl: control point offset along
+    // the perpendicular.
+    const tipX = x0 + dirX * len;
+    const tipY = y0 + dirY * len;
+    const pX = -dirY;
+    const pY =  dirX;
+    const curlAmt = len * g.bendCurl * g.flip;
+    const ctrlX = x0 + dirX * len * 0.5 + pX * curlAmt;
+    const ctrlY = y0 + dirY * len * 0.5 + pY * curlAmt;
 
-    // Wave-band colour: lerp the blade's base colour toward the silver
-    // BENT colour as bend magnitude grows. Same gust patch → same shift,
-    // so coherent gust regions appear as bright streaks.
-    const palePull = bendMag * 0.55;
-    const r  = g.baseR + (BENT_R - g.baseR) * palePull;
-    const gg = g.baseG + (BENT_G - g.baseG) * palePull;
-    const b  = g.baseB + (BENT_B - g.baseB) * palePull;
-    const a  = g.alpha * edgeFade;
+    const a = g.alpha * edgeFade;
     if (a < 3) continue;
 
-    stroke(r, gg, b, a);
+    // Main blade stroke — no colour modulation, just the baked palette.
+    stroke(g.baseR, g.baseG, g.baseB, a);
     strokeWeight(w);
     beginShape();
     vertex(x0, y0);
     quadraticVertex(ctrlX, ctrlY, tipX, tipY);
     endShape();
 
-    // Tip taper on the thicker blades — finer overlay with a stronger
-    // pale pull (the tip is where the sheen reads strongest).
+    // Tip taper for thicker blades — finer overlay covering the upper
+    // half of the curve, same colour at slightly lower alpha.
     if (w > 0.50) {
       const sX = lerp(x0, ctrlX, 0.55);
       const sY = lerp(y0, ctrlY, 0.55);
-      const tipPale = bendMag * 0.85;
-      const tr  = g.baseR + (BENT_R - g.baseR) * tipPale;
-      const tgg = g.baseG + (BENT_G - g.baseG) * tipPale;
-      const tb  = g.baseB + (BENT_B - g.baseB) * tipPale;
-      stroke(tr, tgg, tb, a * 0.80);
+      stroke(g.baseR, g.baseG, g.baseB, a * 0.80);
       strokeWeight(w * 0.45);
       beginShape();
       vertex(sX, sY);
       quadraticVertex(
         lerp(ctrlX, tipX, 0.45),
         lerp(ctrlY, tipY, 0.45),
+        tipX, tipY
+      );
+      endShape();
+    }
+
+    // Baked-in cream tip highlight on a small fraction of blades —
+    // gives the reference's "occasional yellow tip" look without any
+    // animated sheen.
+    if (g.hasTipHighlight && edgeFade > 0.4) {
+      const hX = lerp(ctrlX, tipX, 0.4);
+      const hY = lerp(ctrlY, tipY, 0.4);
+      stroke(TIP_HL_R, TIP_HL_G, TIP_HL_B, a * 0.55);
+      strokeWeight(w * 0.55);
+      beginShape();
+      vertex(hX, hY);
+      quadraticVertex(
+        lerp(ctrlX, tipX, 0.75),
+        lerp(ctrlY, tipY, 0.75),
         tipX, tipY
       );
       endShape();
