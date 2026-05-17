@@ -22,10 +22,6 @@ const GRASS_MID  = ["#4F9A68", "#68B17D", "#7FC493", "#91CFA3"];
 const GRASS_LITE = ["#B9E0C4", "#D5EED8", "#E6F4E5", "#F2F7EC"];
 const GRASS_COOL = ["#8ECDB2", "#A9DCC4", "#C8E8D8"];
 
-const WATER_IN   = "#E3F0E2";
-const WATER_MID  = "#CDE5D3";
-const WATER_OUT  = "#A9D2B7";
-
 const BOAT_MAIN  = "#102B25";
 const BOAT_DARK  = "#081915";
 const BOAT_LITE  = "#3F6557";
@@ -224,13 +220,10 @@ function makeGrass(x, y, depth) {
     len,
     width: random(wMin, wMax),
     color: col,
-    bend: random(0.18, 0.32),
-    flip: random() < 0.5 ? -1 : 1,
-    swirlJitter: random(-0.12, 0.12),
     phase: random(TWO_PI),
-    // Small per-reed natural angle variation so the horizontal flow isn't
-    // uniform — adds organic noise to the bulk direction.
-    angJitter: random(-0.18, 0.18),
+    // Per-reed fixed lean — tiny preference in resting bend direction so
+    // the field isn't perfectly uniform when wind is calm.
+    baseLean: random(-0.5, 0.5),
   };
 }
 
@@ -246,11 +239,10 @@ function draw() {
   scale(scaleFactor);
 
   image(bgLayer, 0, 0);
-  drawClearing(boat.x, boat.y);      // subtle water wash, NOT a glow
   drawGrassLayer(0);                  // far
   image(fogLayer, 0, 0);              // top fog
   drawGrassLayer(1);                  // mid
-  drawBoat(boat.x, boat.y);           // boat in centre of pool
+  drawBoat(boat.x, boat.y);           // boat in the grass-free opening
   drawGrassLayer(2);                  // near, on top
   drawHaze();
 
@@ -287,74 +279,60 @@ function drawGrassLayer(depth) {
       edgeFade = edgeFade * edgeFade * (3 - 2 * edgeFade);  // smoothstep
     }
 
-    drawReed(g, bx, by, ed, edgeFade);
+    // Vertical reeds grow straight up from (g.x, g.y). If the root sits
+    // below the clearing and the tip would enter the ellipse from below,
+    // clip the length so the tip stops at the rim.
+    let effLen = g.len;
+    const xFracN = (g.x - bx) / ELL_W;
+    if (abs(xFracN) < 1) {
+      const yOff = ELL_H * sqrt(1 - xFracN * xFracN);
+      const yLowRim = by + yOff;
+      if (g.y > yLowRim) {
+        effLen = min(g.len, g.y - yLowRim - 1);
+      }
+    }
+    if (effLen < 3) continue;
+
+    drawReed(g, effLen, edgeFade);
   }
 }
 
-function drawReed(g, bx, by, ed, edgeFade) {
+// A reed grows straight up from (g.x, g.y). Wind doesn't rotate the
+// whole blade — it bends the upper half horizontally, so the curve goes
+// from straight to comma-shaped while the root stays fixed.
+function drawReed(g, effLen, edgeFade) {
   const x0 = g.x;
   const y0 = g.y;
 
-  // Vector toward boat (vortex centre).
-  const rdx = bx - x0;
-  const rdy = by - y0;
-  const rd  = sqrt(rdx * rdx + rdy * rdy) || 0.001;
-  const cux = rdx / rd;
-  const cuy = rdy / rd;
+  // Wind/wave field — scalar that controls horizontal bend of the tip.
+  // noise gives spatially correlated gusts; sin makes them travel from
+  // lower-left to upper-right so neighbouring reeds bend together as a
+  // wave passes through.
+  const wind = (noise(x0 * 0.005, y0 * 0.005, t * 0.55) - 0.5);
+  const wave = sin(x0 * 0.014 - y0 * 0.009 + t * 1.7 + g.phase);
+  const bendSignal = constrain(wind * 1.2 + wave * 0.5, -1, 1);
 
-  // Clockwise tangent with vertical component dampened so the swirl stays
-  // horizontal-leaning even directly above or below the boat.
-  const Y_DAMP = 0.35;
-  let tx = -cuy;
-  let ty =  cux * Y_DAMP;
-  const tn = sqrt(tx * tx + ty * ty) || 1;
-  tx /= tn; ty /= tn;
+  let maxBend;
+  if (g.depth === 0)      maxBend = 6;
+  else if (g.depth === 1) maxBend = 16;
+  else                    maxBend = 28;
 
-  // Natural direction: roughly horizontal toward the right, with a small
-  // tilt that lifts reeds above the boat and drops reeds below — creating
-  // a soft sense of flow around the pool even far from it.
-  const yRel = (y0 - by) / 220;
-  const naturalAng = constrain(yRel * 0.22, -0.30, 0.30) + g.angJitter * 0.35;
-  const naX = cos(naturalAng);
-  const naY = sin(naturalAng);
-
-  // Blend tangent (near boat) → natural (far away).
-  const swirlMix = constrain(exp(-(ed - 1.0) * 0.55), 0, 1);
-
-  let dirX = lerp(naX, tx, swirlMix);
-  let dirY = lerp(naY, ty, swirlMix);
-  const dLen = sqrt(dirX * dirX + dirY * dirY) || 1;
-  dirX /= dLen;
-  dirY /= dLen;
-
-  // Wind & wave — gust travels from lower-left to upper-right.
-  const wind = (noise(x0 * 0.0045, y0 * 0.0045, t * 0.55) - 0.5);
-  const wave = sin(x0 * 0.015 - y0 * 0.010 + t * 1.7 + g.phase);
-
-  let swayMax;
-  if (g.depth === 0)      swayMax = 0.06;
-  else if (g.depth === 1) swayMax = 0.12;
-  else                    swayMax = 0.19;
-  const sway = wind * 0.32 + wave * swayMax;
-
-  const cs = cos(sway), sn = sin(sway);
-  const fX = dirX * cs - dirY * sn;
-  const fY = dirX * sn + dirY * cs;
-
-  const len = g.len * (0.45 + 0.55 * edgeFade);
+  const len = effLen * (0.5 + 0.5 * edgeFade);
   const w   = g.width * (0.60 + 0.40 * edgeFade);
 
-  // Perpendicular for the comma-shaped bend.
-  const pX = -fY;
-  const pY =  fX;
+  // Horizontal displacement of the tip from the root.
+  const tipDx = bendSignal * maxBend + g.baseLean * 4;
+  // A strong bend drops the tip a touch (foreshortening as the blade lays
+  // over).
+  const droopY = abs(bendSignal) * len * 0.05;
 
-  const bendStrength = g.bend * (0.85 + 0.30 * wave);
-  const bendAmt = bendStrength * len * g.flip;
+  const tipX = x0 + tipDx;
+  const tipY = y0 - len + droopY;
 
-  const cX = x0 + fX * len * 0.55 + pX * bendAmt * 0.55;
-  const cY = y0 + fY * len * 0.55 + pY * bendAmt * 0.55;
-  const tX = x0 + fX * len * 0.92 + pX * bendAmt * 1.10;
-  const tY = y0 + fY * len * 0.92 + pY * bendAmt * 1.10;
+  // Control point: middle-upper section. Lower half stays close to
+  // vertical, upper half is where the bending shows.
+  const ctrlX = x0 + tipDx * 0.35;
+  const ctrlY = y0 - len * 0.55;
 
   const baseA = alpha(g.color) * edgeFade;
   if (baseA < 3) return;
@@ -365,62 +343,24 @@ function drawReed(g, bx, by, ed, edgeFade) {
   strokeWeight(w);
   beginShape();
   vertex(x0, y0);
-  quadraticVertex(cX, cY, tX, tY);
+  quadraticVertex(ctrlX, ctrlY, tipX, tipY);
   endShape();
 
-  // Tip taper for the thicker reeds — finer overlay covering the upper half.
+  // Tip taper for the thicker reeds.
   if (w > 0.50) {
-    const sX = lerp(x0, cX, 0.55);
-    const sY = lerp(y0, cY, 0.55);
+    const sX = lerp(x0, ctrlX, 0.55);
+    const sY = lerp(y0, ctrlY, 0.55);
     stroke(color(rC, gC, bC, baseA * 0.80));
     strokeWeight(w * 0.45);
     beginShape();
     vertex(sX, sY);
     quadraticVertex(
-      lerp(cX, tX, 0.45),
-      lerp(cY, tY, 0.45),
-      tX, tY
+      lerp(ctrlX, tipX, 0.45),
+      lerp(ctrlY, tipY, 0.45),
+      tipX, tipY
     );
     endShape();
   }
-}
-
-// ---------- Clearing (subtle pool, NOT a glow) ----------
-// Drawn under the grass layers; the visible "opening" is shaped by reeds
-// thinning and bending out of it, not by an opaque oval.
-function drawClearing(bx, by) {
-  push();
-  noStroke();
-
-  // Three soft eye-shaped washes that blend with the background.
-  // Outer halo — barely visible.
-  let c = color(WATER_OUT);
-  c.setAlpha(20);
-  fill(c);
-  drawEye(bx, by, ELL_W * 1.85, ELL_H * 1.95);
-
-  // Middle.
-  c = lerpColor(color(WATER_OUT), color(WATER_MID), 0.5);
-  c.setAlpha(34);
-  fill(c);
-  drawEye(bx, by, ELL_W * 1.35, ELL_H * 1.35);
-
-  // Inner — pale water, still soft.
-  c = color(WATER_IN);
-  c.setAlpha(52);
-  fill(c);
-  drawEye(bx, by, ELL_W * 1.00, ELL_H * 1.00);
-
-  pop();
-}
-
-// Lens / eye shape — pointier at the horizontal tips than a plain ellipse.
-function drawEye(cx, cy, w, h) {
-  beginShape();
-  vertex(cx - w, cy);
-  bezierVertex(cx - w * 0.55, cy - h, cx + w * 0.55, cy - h, cx + w, cy);
-  bezierVertex(cx + w * 0.55, cy + h, cx - w * 0.55, cy + h, cx - w, cy);
-  endShape(CLOSE);
 }
 
 // ---------- Boat ----------
